@@ -5,6 +5,7 @@ const { scrape1337x } = require('./scraper');
 const WebTorrent = require('webtorrent');
 const path = require('path');
 const fs = require('fs-extra');
+const morgan = require('morgan');
 
 const app = express();
 const client = new WebTorrent();
@@ -15,21 +16,29 @@ const DOWNLOAD_DIR = path.resolve(process.env.DOWNLOAD_DIR || './downloads');
 fs.ensureDirSync(DOWNLOAD_DIR);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Allow all origins (update this to your frontend URL in production)
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
-app.use(express.static('public'));
+app.use(morgan('dev')); // Logging middleware
 
-// Logging middleware
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
+// Serve static files (if needed)
+app.use('/downloads', express.static(DOWNLOAD_DIR));
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date() });
 });
 
 // Search endpoint
 app.get('/api/search', async (req, res) => {
   try {
     const query = req.query.q;
-    if (!query) return res.status(400).json({ error: 'Search query required' });
+    if (!query) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
 
     console.log(`Searching for: ${query}`);
     const results = await scrape1337x(query);
@@ -44,7 +53,9 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/download', async (req, res) => {
   try {
     const magnet = req.query.magnet;
-    if (!magnet) return res.status(400).json({ error: 'Magnet link required' });
+    if (!magnet) {
+      return res.status(400).json({ error: 'Magnet link is required' });
+    }
 
     console.log(`Starting download: ${magnet.slice(0, 50)}...`);
     const torrent = client.add(magnet, { path: DOWNLOAD_DIR });
@@ -57,7 +68,7 @@ app.get('/api/download', async (req, res) => {
       );
 
       if (!videoFile) {
-        return res.status(404).json({ error: 'No video file found' });
+        return res.status(404).json({ error: 'No video file found in torrent' });
       }
 
       res.json({
@@ -80,10 +91,14 @@ app.get('/api/download', async (req, res) => {
 // Streaming endpoint
 app.get('/stream/:infoHash', (req, res) => {
   const torrent = client.get(req.params.infoHash);
-  if (!torrent) return res.status(404).send('Torrent not found');
+  if (!torrent) {
+    return res.status(404).json({ error: 'Torrent not found' });
+  }
 
   const file = torrent.files.find(f => f.name === req.query.file);
-  if (!file) return res.status(404).send('File not found');
+  if (!file) {
+    return res.status(404).json({ error: 'File not found' });
+  }
 
   res.setHeader('Content-Type', 'video/mp4');
   file.createReadStream().pipe(res);
@@ -100,18 +115,18 @@ app.get('/api/downloads', (req, res) => {
     }));
     res.json(downloads);
   } catch (error) {
+    console.error('Error listing downloads:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Serve downloaded files
-app.use('/downloads', express.static(DOWNLOAD_DIR));
-
-// Serve frontend
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
+// Start the server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
