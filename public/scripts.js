@@ -12,6 +12,12 @@
 
   // Index.html functions
   if (window.location.pathname.endsWith('index.html') || window.location.pathname === '/') {
+    // Add event listeners
+    document.getElementById('searchButton').addEventListener('click', searchMovies);
+    document.getElementById('viewDownloadsButton').addEventListener('click', () => {
+      window.location.href = 'downloads.html';
+    });
+
     async function searchMovies() {
       const query = document.getElementById('searchInput').value.trim();
       if (!query) return;
@@ -86,11 +92,18 @@
             <h3>${result.title}</h3>
             <p>Size: ${result.size} | Seeders: ${result.seeders}</p>
           </div>
-          <button onclick="startDownload('${result.magnet}')">
+          <button class="downloadButton" data-magnet="${result.magnet}">
             Download
           </button>
         </div>
       `).join('');
+
+      // Add event listeners to download buttons
+      document.querySelectorAll('.downloadButton').forEach(button => {
+        button.addEventListener('click', () => {
+          startDownload(button.dataset.magnet);
+        });
+      });
     }
 
     function showLoading(show) {
@@ -121,11 +134,18 @@
             <h3>${download.name}</h3>
             <p>Size: ${download.size}</p>
           </div>
-          <button onclick="playDownload('${download.fileName}')">
+          <button class="playButton" data-file="${download.fileName}">
             Play
           </button>
         </div>
       `).join('');
+
+      // Add event listeners to play buttons
+      document.querySelectorAll('.playButton').forEach(button => {
+        button.addEventListener('click', () => {
+          playDownload(button.dataset.file);
+        });
+      });
     }
 
     function playDownload(fileName) {
